@@ -17,7 +17,7 @@ Polymarket Pro brings TradingView-style analytics and execution to Polymarket tr
 
 ## 🧩 Roadmap
 - [x] Mock UI + chart
-- [ ] Alert creation & UI logic
+- [x] Alert creation & UI logic
 - [ ] API integration
 - [ ] Portfolio tracking
 - [ ] Launch on Vercel
