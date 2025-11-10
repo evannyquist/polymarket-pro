@@ -4,8 +4,6 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { AlertsProvider } from "@/components/alerts/AlertsContext";
 import AlertModal from "@/components/alerts/AlertModal";
-import AppToaster from "@/components/ui/Toaster";
-
 
 // SSR-safe dynamic import
 const MockChart = dynamic(() => import("@/components/chart/MockChart"), { ssr: false });
@@ -42,7 +40,6 @@ export default function Home() {
         </section>
 
         <AlertModal open={open} onClose={() => setOpen(false)} />
-        <AppToaster />
       </main>
     </AlertsProvider>
   );
