@@ -54,7 +54,6 @@ export default function AlertModal({ open, onClose }: { open: boolean; onClose: 
     </div>
   );
 }
-
 const overlayStyle: React.CSSProperties = {
   position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
   display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50
@@ -74,3 +73,4 @@ const btnPrimary: React.CSSProperties = {
 const btnGhost: React.CSSProperties = {
   background: "transparent", border: "1px solid #1f232b", color: "white", padding: "10px 14px", borderRadius: 8, cursor: "pointer"
 };
+
