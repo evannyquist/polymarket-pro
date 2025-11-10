@@ -16,16 +16,44 @@ export default function MockChart() {
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height: 420,
-      layout: { background: { color: "#0b0d12" }, textColor: "#c9d1d9" },
-      grid: { vertLines: { color: "#1f232b" }, horzLines: { color: "#1f232b" } },
-      rightPriceScale: { borderColor: "#1f232b" },
-      timeScale: { borderColor: "#1f232b" }
+      height: 500,
+      layout: {
+        background: { color: "transparent" },
+        textColor: "#9ca3af",
+        fontSize: 12
+      },
+      grid: {
+        vertLines: { color: "#1f2937", style: 0 },
+        horzLines: { color: "#1f2937", style: 0 }
+      },
+      rightPriceScale: {
+        borderColor: "#374151",
+        scaleMargins: { top: 0.1, bottom: 0.1 }
+      },
+      timeScale: {
+        borderColor: "#374151",
+        timeVisible: true,
+        secondsVisible: false
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: { color: "#3b82f6", width: 1, style: 2 },
+        horzLine: { color: "#3b82f6", width: 1, style: 2 }
+      }
     });
 
     // v5 API: use addSeries with { type: 'Line' }
     const line = chart.addSeries(LineSeries, {
-      lineWidth: 2
+      lineWidth: 2,
+      color: "#3b82f6",
+      lineStyle: 0,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      priceFormat: {
+        type: "price",
+        precision: 3,
+        minMove: 0.001
+      }
     });
 
     seriesRef.current = line;
@@ -62,12 +90,12 @@ export default function MockChart() {
   return (
     <div
       ref={containerRef}
+      className="w-full"
       style={{
-        width: "100%",
-        height: 420,
-        background: "#0b0d12",
-        border: "1px solid #1f232b",
-        borderRadius: 12
+        height: 500,
+        background: "transparent",
+        borderRadius: 12,
+        overflow: "hidden"
       }}
     />
   );
