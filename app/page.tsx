@@ -5,13 +5,15 @@ import { useState } from "react";
 import { AlertsProvider } from "@/components/alerts/AlertsContext";
 import AlertModal from "@/components/alerts/AlertModal";
 import AlertsList from "@/components/alerts/AlertsList";
+import MarketSelector from "@/components/market/MarketSelector";
 import AppToaster from "@/components/ui/Toaster";
 
 // SSR-safe dynamic import
-const MockChart = dynamic(() => import("@/components/chart/MockChart"), { ssr: false });
+const MarketChart = dynamic(() => import("@/components/chart/MockChart"), { ssr: false });
 
 export default function Home() {
   const [open, setOpen] = useState(false);
+  const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
 
   return (
     <AlertsProvider>
@@ -26,8 +28,8 @@ export default function Home() {
                 </h1>
                 <p className="text-gray-400 text-sm sm:text-base">
                   Live charts · Alerts · Pro analytics
-                  <span className="ml-2 px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded text-xs font-medium">
-                    Demo Feed
+                  <span className="ml-2 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded text-xs font-medium">
+                    Live Data
                   </span>
                 </p>
               </div>
@@ -65,13 +67,10 @@ export default function Home() {
                   <p className="text-sm text-gray-400">Real-time odds visualization</p>
                 </div>
                 <div className="flex gap-2">
-                  <div className="px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                    <span className="text-xs text-gray-400">Market</span>
-                    <span className="ml-2 text-sm font-medium text-white">DEMO</span>
-                  </div>
+                  <MarketSelector selectedMarketId={selectedMarketId} onSelect={setSelectedMarketId} />
                 </div>
               </div>
-              <MockChart />
+              <MarketChart marketId={selectedMarketId} />
             </div>
           </section>
 
