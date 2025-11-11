@@ -5,11 +5,17 @@ import { useEffect, useRef } from "react";
 import { usePolymarketFeed } from "@/lib/polymarketFeed";
 import { useAlerts } from "@/components/alerts/AlertsContext";
 
-export default function MarketChart({ marketId }: { marketId: string | null }) {
+export default function MarketChart({ 
+  marketId, 
+  marketData 
+}: { 
+  marketId: string | null;
+  marketData?: any;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-  const { latest, history, loading, error } = usePolymarketFeed(marketId);
+  const { latest, history, loading, error } = usePolymarketFeed(marketId, marketData);
   const { evaluateAlerts } = useAlerts();
 
   // Initialize chart (only once)
@@ -74,22 +80,29 @@ export default function MarketChart({ marketId }: { marketId: string | null }) {
     };
   }, []);
 
-  // seed history - load all historical data points
-  // This effect runs whenever history changes, but we need to ensure the series is ready
+  // Track if we've initialized the chart with historical data
+  const historyInitializedRef = useRef(false);
+  const lastHistoryLengthRef = useRef(0);
+  const lastMarketIdRef = useRef<string | null>(null);
+
+  // Reset initialization when market changes
   useEffect(() => {
-    console.log("History effect triggered:", {
-      hasSeries: !!seriesRef.current,
-      historyLength: history.length,
-      history: history.slice(0, 3) // First 3 points for debugging
-    });
-    
+    if (marketId !== lastMarketIdRef.current) {
+      historyInitializedRef.current = false;
+      lastHistoryLengthRef.current = 0;
+      lastMarketIdRef.current = marketId;
+    }
+  }, [marketId]);
+
+  // seed history - load all historical data points
+  // This effect runs whenever history changes, but we only want to reset the chart
+  // when history is first loaded or when it changes significantly
+  useEffect(() => {
     if (!seriesRef.current) {
       console.log("Series not ready yet, will retry when series is available");
-      // Don't return - we'll set up a retry mechanism
-      // Instead, wait a bit and check again
       const timeout = setTimeout(() => {
-        if (seriesRef.current && history.length > 0) {
-          // Retry setting data
+        if (seriesRef.current && history.length > 0 && !historyInitializedRef.current) {
+          // Retry setting initial data
           const data: LineData[] = history.map((p) => {
             const timestamp = p.t as number;
             if (!timestamp || isNaN(timestamp)) {
@@ -134,13 +147,12 @@ export default function MarketChart({ marketId }: { marketId: string | null }) {
             }
             
             try {
-              // Clear any existing data first
               seriesRef.current.setData([]);
-              // Then set all the data
               seriesRef.current.setData(deduplicatedData);
+              historyInitializedRef.current = true;
+              lastHistoryLengthRef.current = history.length;
               console.log(`Chart data set successfully (retry): ${deduplicatedData.length} points`);
               
-              // Force chart to fit content
               if (chartRef.current && deduplicatedData.length > 0) {
                 chartRef.current.timeScale().fitContent();
                 console.log("Chart time scale fitted to content (retry)");
@@ -160,86 +172,73 @@ export default function MarketChart({ marketId }: { marketId: string | null }) {
       return;
     }
     
-    // Convert history points to LineData format for lightweight-charts
-    // Timestamps are Unix timestamps in seconds, which lightweight-charts expects
-    // lightweight-charts expects timestamps as numbers (seconds since epoch) for UTCTimestamp
-    // IMPORTANT: Data must be strictly ascending by time with no duplicates
-    const rawData: LineData[] = history.map((p) => {
-      const timestamp = p.t as number;
-      // Ensure timestamp is valid
-      if (!timestamp || isNaN(timestamp) || timestamp <= 0) {
-        console.warn("Invalid timestamp:", p);
-        return null;
-      }
-      return {
-        time: timestamp as UTCTimestamp as Time,
-        value: p.v
-      };
-    }).filter((d): d is LineData => d !== null);
+    // Only reset the entire chart if:
+    // 1. We haven't initialized yet (first load)
+    // 2. History length decreased significantly (user switched markets)
+    const shouldReset = !historyInitializedRef.current || 
+                        (history.length < lastHistoryLengthRef.current * 0.5);
     
-    // Remove duplicate timestamps (keep the last one for each timestamp)
-    // Also ensure strict ascending order
-    const timeMap = new Map<number, LineData>();
-    for (const point of rawData) {
-      const timeNum = point.time as number;
-      // Keep the last value for each timestamp
-      timeMap.set(timeNum, point);
-    }
-    
-    // Convert back to array and sort by time (should already be sorted, but ensure it)
-    const data = Array.from(timeMap.values()).sort((a, b) => {
-      const aTime = a.time as number;
-      const bTime = b.time as number;
-      return aTime - bTime;
-    });
-    
-    // Ensure strictly ascending (increment duplicate timestamps by 1 second)
-    const deduplicatedData: LineData[] = [];
-    let lastTime = 0;
-    for (const point of data) {
-      const currentTime = point.time as number;
-      if (currentTime <= lastTime) {
-        // Duplicate or out of order timestamp - increment it
-        const adjustedTime = lastTime + 1;
-        deduplicatedData.push({
-          time: adjustedTime as UTCTimestamp as Time,
-          value: point.value
-        });
-        lastTime = adjustedTime;
-      } else {
-        deduplicatedData.push(point);
-        lastTime = currentTime;
-      }
-    }
-    
-    console.log(`Setting ${deduplicatedData.length} data points on chart (filtered from ${history.length}, removed ${rawData.length - deduplicatedData.length} duplicates)`);
-    if (deduplicatedData.length > 0) {
-      console.log("First point:", deduplicatedData[0]);
-      console.log("Last point:", deduplicatedData[deduplicatedData.length - 1]);
-      console.log("Time range:", {
-        first: new Date((deduplicatedData[0].time as number) * 1000).toISOString(),
-        last: new Date((deduplicatedData[deduplicatedData.length - 1].time as number) * 1000).toISOString(),
-        span: `${(((deduplicatedData[deduplicatedData.length - 1].time as number) - (deduplicatedData[0].time as number)) / 86400).toFixed(1)} days`
-      });
-    }
-    
-    // Set all historical data at once
-    if (deduplicatedData.length > 0) {
-      try {
-        // Clear any existing data first
-        seriesRef.current.setData([]);
-        // Then set all the data
-        seriesRef.current.setData(deduplicatedData);
-        console.log(`Chart data set successfully: ${deduplicatedData.length} points`);
-        
-        // Force chart to fit content
-        if (chartRef.current && deduplicatedData.length > 0) {
-          chartRef.current.timeScale().fitContent();
-          console.log("Chart time scale fitted to content");
+    if (shouldReset) {
+      // Initial load or significant change - reset entire chart
+      const rawData: LineData[] = history.map((p) => {
+        const timestamp = p.t as number;
+        if (!timestamp || isNaN(timestamp) || timestamp <= 0) {
+          return null;
         }
-      } catch (error) {
-        console.error("Error setting chart data:", error);
+        return {
+          time: timestamp as UTCTimestamp as Time,
+          value: p.v
+        };
+      }).filter((d): d is LineData => d !== null);
+      
+      const timeMap = new Map<number, LineData>();
+      for (const point of rawData) {
+        const timeNum = point.time as number;
+        timeMap.set(timeNum, point);
       }
+      
+      const data = Array.from(timeMap.values()).sort((a, b) => {
+        const aTime = a.time as number;
+        const bTime = b.time as number;
+        return aTime - bTime;
+      });
+      
+      const deduplicatedData: LineData[] = [];
+      let lastTime = 0;
+      for (const point of data) {
+        const currentTime = point.time as number;
+        if (currentTime <= lastTime) {
+          const adjustedTime = lastTime + 1;
+          deduplicatedData.push({
+            time: adjustedTime as UTCTimestamp as Time,
+            value: point.value
+          });
+          lastTime = adjustedTime;
+        } else {
+          deduplicatedData.push(point);
+          lastTime = currentTime;
+        }
+      }
+      
+      if (deduplicatedData.length > 0) {
+        try {
+          seriesRef.current.setData([]);
+          seriesRef.current.setData(deduplicatedData);
+          historyInitializedRef.current = true;
+          lastHistoryLengthRef.current = history.length;
+          console.log(`Chart data set successfully: ${deduplicatedData.length} points`);
+          
+          if (chartRef.current && deduplicatedData.length > 0) {
+            chartRef.current.timeScale().fitContent();
+            console.log("Chart time scale fitted to content");
+          }
+        } catch (error) {
+          console.error("Error setting chart data:", error);
+        }
+      }
+    } else {
+      // History is just being appended - don't reset, let the latest effect handle updates
+      lastHistoryLengthRef.current = history.length;
     }
   }, [history]);
 

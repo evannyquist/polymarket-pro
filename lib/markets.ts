@@ -14,6 +14,9 @@ export type Market = {
   endDate?: string;
   active?: boolean;
   volume?: string;
+  bestBid?: number; // Current best bid price
+  bestAsk?: number; // Current best ask price
+  lastTradePrice?: number; // Last trade price
 };
 
 export function useMarkets() {

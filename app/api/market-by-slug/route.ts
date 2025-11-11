@@ -16,17 +16,40 @@ export async function GET(request: Request) {
       );
     }
 
-    // Try markets endpoint first with slug query parameter
+    // Prioritize events endpoint per documentation
+    // Reference: https://docs.polymarket.com/api-reference/events/get-event-by-slug
+    // GET /events/slug/{slug}
+    const eventsEndpoint = `https://gamma-api.polymarket.com/events/slug/${encodeURIComponent(slug)}`;
+    
+    console.log("Fetching event from:", eventsEndpoint);
+    const eventsResponse = await fetch(eventsEndpoint, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Polymarket-Pro/1.0",
+      },
+      next: { revalidate: 60 },
+    });
+
+    if (eventsResponse.ok) {
+      const eventsData = await eventsResponse.json();
+      console.log("Events API response status:", eventsResponse.status);
+      console.log("Events API response has markets:", eventsData.markets ? `Yes, ${Array.isArray(eventsData.markets) ? eventsData.markets.length : 'not array'}` : "No");
+      return NextResponse.json(eventsData);
+    }
+
+    // Fallback to markets endpoint if events endpoint fails
     // GET /markets?slug=<slug>
     const marketsEndpoint = `https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`;
     
+    console.log("Events endpoint failed, trying markets endpoint:", marketsEndpoint);
     const marketsResponse = await fetch(marketsEndpoint, {
       method: "GET",
       headers: {
         "Accept": "application/json",
         "User-Agent": "Polymarket-Pro/1.0",
       },
-      next: { revalidate: 60 }, // Revalidate every 60 seconds
+      next: { revalidate: 60 },
     });
 
     if (marketsResponse.ok) {
@@ -39,25 +62,7 @@ export async function GET(request: Request) {
       return NextResponse.json(marketsData);
     }
 
-    // If markets endpoint fails, try events endpoint
-    // GET /events?slug[]=<slug> or GET /events/slug/<slug>
-    const eventsEndpoint = `https://gamma-api.polymarket.com/events/slug/${encodeURIComponent(slug)}`;
-    
-    const eventsResponse = await fetch(eventsEndpoint, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "Polymarket-Pro/1.0",
-      },
-      next: { revalidate: 60 },
-    });
-
-    if (eventsResponse.ok) {
-      const eventsData = await eventsResponse.json();
-      return NextResponse.json(eventsData);
-    }
-
-    throw new Error(`Both markets and events endpoints failed. Markets: ${marketsResponse.status}, Events: ${eventsResponse.status}`);
+    throw new Error(`Both events and markets endpoints failed. Events: ${eventsResponse.status}, Markets: ${marketsResponse.status}`);
   } catch (error) {
     console.error("Error in market-by-slug API route:", error);
     return NextResponse.json(
