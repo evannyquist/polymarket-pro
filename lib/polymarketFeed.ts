@@ -44,13 +44,31 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
   const [latest, setLatest] = useState<Point | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reconnectTrigger, setReconnectTrigger] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resolvedTokenIdRef = useRef<string | null>(null);
+  const isIntentionallyClosingRef = useRef(false);
 
   // Fetch initial market data and history
   useEffect(() => {
-    if (!marketId) {
+    // Reset intentional close flag for new connections
+    isIntentionallyClosingRef.current = false;
+    
+    // Clear any existing reconnect timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    // Resolve token ID consistently: prefer marketData.tokenId (more reliable) over marketId
+    // This ensures both price history and WebSocket use the same token ID, preventing
+    // race conditions when state updates are out of sync
+    const resolvedTokenId = marketData?.tokenId || marketId;
+    resolvedTokenIdRef.current = resolvedTokenId;
+    
+    if (!resolvedTokenId) {
       setLoading(false);
       return;
     }
@@ -60,10 +78,7 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
 
     const fetchMarketData = async () => {
       try {
-        // marketId should be a token ID (from the slug-based market selector)
-        // The market selector now provides token IDs directly after resolving from slug
-        resolvedTokenIdRef.current = marketId;
-        const tokenId = marketId;
+        const tokenId = resolvedTokenId;
         
         if (!tokenId) {
           throw new Error("No token ID provided");
@@ -163,8 +178,9 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
     // Set up WebSocket connection for real-time market updates
     // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
     // This is a public channel, so authentication may not be required
-    if (marketId && marketData?.tokenId) {
-      const tokenId = marketData.tokenId;
+    // Use the same resolved token ID to ensure consistency with price history fetch
+    if (resolvedTokenId) {
+      const tokenId = resolvedTokenId;
       console.log("Setting up WebSocket connection for token:", tokenId);
       
       try {
@@ -286,11 +302,16 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
         
         ws.onclose = (event) => {
           console.log("WebSocket closed:", event.code, event.reason);
-          // Reconnect after 3 seconds if we still have a market selected
-          if (marketId && marketData?.tokenId) {
-            setTimeout(() => {
-              // The effect will re-run and reconnect
+          wsRef.current = null;
+          
+          // Only reconnect if this wasn't an intentional close and we still have a market selected
+          // Use resolvedTokenIdRef to check if we still have a valid token ID
+          if (!isIntentionallyClosingRef.current && resolvedTokenIdRef.current) {
+            console.log("WebSocket closed unexpectedly, scheduling reconnection...");
+            reconnectTimeoutRef.current = setTimeout(() => {
               console.log("Attempting to reconnect WebSocket...");
+              // Trigger reconnection by incrementing reconnectTrigger, which will cause the effect to re-run
+              setReconnectTrigger((prev) => prev + 1);
             }, 3000);
           }
         };
@@ -346,16 +367,32 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
       }, 10000); // Poll every 10 seconds as fallback
     }
 
+    // Cleanup function
     return () => {
+      // Clear any pending reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      // Mark as intentional close to prevent reconnection
+      isIntentionallyClosingRef.current = true;
+      
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
+      
+      // Reset the flag after a short delay to allow cleanup to complete
+      setTimeout(() => {
+        isIntentionallyClosingRef.current = false;
+      }, 100);
     };
-  }, [marketId, marketData]);
+  }, [marketId, marketData?.tokenId, reconnectTrigger]);
 
   return { history, latest, loading, error };
 }

@@ -96,14 +96,21 @@ export function useMarketBySlug() {
             const tokenId = clobTokenIds[0];
             const question = marketItem.question || "Unknown Market";
             
+            // Parse price values, handling 0 and NaN correctly
+            const parsePrice = (value: any): number | undefined => {
+              if (value === undefined) return undefined;
+              const parsed = parseFloat(value);
+              return isNaN(parsed) ? undefined : parsed;
+            };
+            
             eventMarkets.push({
               question,
               tokenId,
               conditionId: marketItem.conditionId || marketItem.condition_id,
               slug: marketItem.slug,
-              bestBid: marketItem.bestBid !== undefined ? parseFloat(marketItem.bestBid) : undefined,
-              bestAsk: marketItem.bestAsk !== undefined ? parseFloat(marketItem.bestAsk) : undefined,
-              lastTradePrice: marketItem.lastTradePrice !== undefined ? parseFloat(marketItem.lastTradePrice) : undefined,
+              bestBid: parsePrice(marketItem.bestBid),
+              bestAsk: parsePrice(marketItem.bestAsk),
+              lastTradePrice: parsePrice(marketItem.lastTradePrice),
             });
           }
         }
@@ -219,21 +226,33 @@ export function useMarketBySlug() {
       
       // Get prices from the market object
       if (eventData.bestBid !== undefined) {
-        bestBid = parseFloat(eventData.bestBid) || undefined;
+        const parsed = parseFloat(eventData.bestBid);
+        bestBid = isNaN(parsed) ? undefined : parsed;
       }
       if (eventData.bestAsk !== undefined) {
-        bestAsk = parseFloat(eventData.bestAsk) || undefined;
+        const parsed = parseFloat(eventData.bestAsk);
+        bestAsk = isNaN(parsed) ? undefined : parsed;
       }
       if (eventData.lastTradePrice !== undefined) {
-        lastTradePrice = parseFloat(eventData.lastTradePrice) || undefined;
+        const parsed = parseFloat(eventData.lastTradePrice);
+        lastTradePrice = isNaN(parsed) ? undefined : parsed;
       }
       
       // If we got the market from an event's markets array, check there too
-      if (!bestBid && eventData.markets && Array.isArray(eventData.markets) && eventData.markets.length > 0) {
+      if (bestBid === undefined && eventData.markets && Array.isArray(eventData.markets) && eventData.markets.length > 0) {
         const firstMarket = eventData.markets[0];
-        if (firstMarket.bestBid !== undefined) bestBid = parseFloat(firstMarket.bestBid) || undefined;
-        if (firstMarket.bestAsk !== undefined) bestAsk = parseFloat(firstMarket.bestAsk) || undefined;
-        if (firstMarket.lastTradePrice !== undefined) lastTradePrice = parseFloat(firstMarket.lastTradePrice) || undefined;
+        if (firstMarket.bestBid !== undefined) {
+          const parsed = parseFloat(firstMarket.bestBid);
+          bestBid = isNaN(parsed) ? undefined : parsed;
+        }
+        if (firstMarket.bestAsk !== undefined) {
+          const parsed = parseFloat(firstMarket.bestAsk);
+          bestAsk = isNaN(parsed) ? undefined : parsed;
+        }
+        if (firstMarket.lastTradePrice !== undefined) {
+          const parsed = parseFloat(firstMarket.lastTradePrice);
+          lastTradePrice = isNaN(parsed) ? undefined : parsed;
+        }
       }
       
       console.log("Current market prices:", { bestBid, bestAsk, lastTradePrice });
