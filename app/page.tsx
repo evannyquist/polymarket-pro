@@ -14,6 +14,7 @@ const MarketChart = dynamic(() => import("@/components/chart/MockChart"), { ssr:
 export default function Home() {
   const [open, setOpen] = useState(false);
   const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
+  const [selectedMarketData, setSelectedMarketData] = useState<any>(null);
 
   return (
     <AlertsProvider>
@@ -67,10 +68,14 @@ export default function Home() {
                   <p className="text-sm text-gray-400">Real-time odds visualization</p>
                 </div>
                 <div className="flex gap-2">
-                  <MarketSelector selectedMarketId={selectedMarketId} onSelect={setSelectedMarketId} />
+                  <MarketSelector 
+                    selectedMarketId={selectedMarketId} 
+                    onSelect={setSelectedMarketId}
+                    onMarketData={setSelectedMarketData}
+                  />
                 </div>
               </div>
-              <MarketChart marketId={selectedMarketId} />
+              <MarketChart marketId={selectedMarketId} marketData={selectedMarketData} />
             </div>
           </section>
 
