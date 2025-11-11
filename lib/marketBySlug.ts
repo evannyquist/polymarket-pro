@@ -33,6 +33,7 @@ export function useMarketBySlug() {
     setLoading(true);
     setError(null);
     setMarket(null);
+    setEventData(null);
 
     try {
       // Step 1: Fetch event/market by slug from Gamma API

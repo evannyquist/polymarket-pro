@@ -387,10 +387,8 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
         wsRef.current = null;
       }
       
-      // Reset the flag after a short delay to allow cleanup to complete
-      setTimeout(() => {
-        isIntentionallyClosingRef.current = false;
-      }, 100);
+      // Note: isIntentionallyClosingRef.current is reset to false at the start of the next effect run (line 57)
+      // We don't reset it here to avoid race conditions where onclose fires after cleanup
     };
   }, [marketId, marketData?.tokenId, reconnectTrigger]);
 
