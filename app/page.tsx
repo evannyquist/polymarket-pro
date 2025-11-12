@@ -15,6 +15,7 @@ export default function Home() {
   const [open, setOpen] = useState(false);
   const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
   const [selectedMarketData, setSelectedMarketData] = useState<any>(null);
+  const [eventMarketTokenIds, setEventMarketTokenIds] = useState<string[]>([]);
 
   return (
     <AlertsProvider>
@@ -72,10 +73,15 @@ export default function Home() {
                     selectedMarketId={selectedMarketId} 
                     onSelect={setSelectedMarketId}
                     onMarketData={setSelectedMarketData}
+                    onEventMarkets={setEventMarketTokenIds}
                   />
                 </div>
               </div>
-              <MarketChart marketId={selectedMarketId} marketData={selectedMarketData} />
+              <MarketChart 
+                marketId={selectedMarketId} 
+                marketData={selectedMarketData}
+                extraMarketTokenIds={eventMarketTokenIds}
+              />
             </div>
           </section>
 
