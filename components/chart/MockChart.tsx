@@ -1,21 +1,24 @@
 "use client";
 
-import { createChart, type ISeriesApi, type LineData, type Time, type UTCTimestamp, LineSeries } from "lightweight-charts";
+import { createChart, type ISeriesApi, type LineData, type Time, type UTCTimestamp, LineSeries, type AutoscaleInfo } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 import { usePolymarketFeed } from "@/lib/polymarketFeed";
 import { useAlerts } from "@/components/alerts/AlertsContext";
 
 export default function MarketChart({ 
   marketId, 
-  marketData 
+  marketData,
+  extraMarketTokenIds = [],
 }: { 
   marketId: string | null;
   marketData?: any;
+  extraMarketTokenIds?: string[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-  const { latest, history, loading, error } = usePolymarketFeed(marketId, marketData);
+  const lastChartTimeRef = useRef<number>(0);
+  const { latest, history, loading, error } = usePolymarketFeed(marketId, marketData, extraMarketTokenIds);
   const { evaluateAlerts } = useAlerts();
 
   // Initialize chart (only once)
@@ -64,6 +67,15 @@ export default function MarketChart({
         precision: 3,
         minMove: 0.001
       }
+    });
+
+    line.applyOptions({
+      autoscaleInfoProvider: (): AutoscaleInfo => ({
+        priceRange: {
+          minValue: 0,
+          maxValue: 1
+        }
+      })
     });
 
     seriesRef.current = line;
@@ -151,6 +163,7 @@ export default function MarketChart({
               seriesRef.current.setData(deduplicatedData);
               historyInitializedRef.current = true;
               lastHistoryLengthRef.current = history.length;
+              lastChartTimeRef.current = deduplicatedData[deduplicatedData.length - 1].time as number;
               console.log(`Chart data set successfully (retry): ${deduplicatedData.length} points`);
               
               if (chartRef.current && deduplicatedData.length > 0) {
@@ -226,6 +239,7 @@ export default function MarketChart({
           seriesRef.current.setData(deduplicatedData);
           historyInitializedRef.current = true;
           lastHistoryLengthRef.current = history.length;
+          lastChartTimeRef.current = deduplicatedData[deduplicatedData.length - 1].time as number;
           console.log(`Chart data set successfully: ${deduplicatedData.length} points`);
           
           if (chartRef.current && deduplicatedData.length > 0) {
@@ -256,12 +270,24 @@ export default function MarketChart({
       return;
     }
     
+    const newTime = typeof latest.t === "number" ? latest.t : Number(latest.t);
+    if (!newTime || isNaN(newTime)) {
+      console.warn("Skipping update due to invalid time", latest);
+      return;
+    }
+    
+    if (newTime <= lastChartTimeRef.current) {
+      evaluateAlerts(latest.v);
+      return;
+    }
+    
     // Update with the latest point (this will append if it's newer)
     try {
       seriesRef.current.update({
-        time: (latest.t as number) as UTCTimestamp as Time,
+        time: newTime as UTCTimestamp as Time,
         value: latest.v
       });
+      lastChartTimeRef.current = newTime;
       console.log("Updated chart with latest point:", latest);
     } catch (error) {
       console.error("Error updating chart with latest point:", error);

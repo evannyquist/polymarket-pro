@@ -8,10 +8,12 @@ export default function MarketSelector({
   selectedMarketId,
   onSelect,
   onMarketData,
+  onEventMarkets,
 }: {
   selectedMarketId: string | null;
   onSelect: (marketId: string) => void;
   onMarketData?: (market: any) => void;
+  onEventMarkets?: (tokenIds: string[]) => void;
 }) {
   const [slug, setSlug] = useState("");
   const [selectedEventMarketIndex, setSelectedEventMarketIndex] = useState<number | null>(null);
@@ -24,7 +26,8 @@ export default function MarketSelector({
     // Reset selection when loading new slug
     setSelectedEventMarketIndex(null);
     
-    const result = await fetchMarket(slug.trim());
+    const cleanSlug = slug.trim();
+    const result = await fetchMarket(cleanSlug);
     
     // If it's an event, select the first market by default
     if (result.event && result.event.markets.length > 0) {
@@ -47,12 +50,24 @@ export default function MarketSelector({
       if (onMarketData) {
         onMarketData(marketData);
       }
+      if (onEventMarkets) {
+        onEventMarkets(result.event.markets.map((m) => m.tokenId));
+      }
     } else if (result.market?.tokenId) {
       // Single market
       setSelectedEventMarketIndex(null);
       onSelect(result.market.tokenId);
       if (onMarketData) {
         onMarketData(result.market);
+      }
+      if (onEventMarkets) {
+        onEventMarkets([]);
+      }
+    } else {
+      // Failed to load market/event
+      setSelectedEventMarketIndex(null);
+      if (onEventMarkets) {
+        onEventMarkets([]);
       }
     }
   };
@@ -75,6 +90,9 @@ export default function MarketSelector({
     
     if (onMarketData) {
       onMarketData(marketData);
+    }
+    if (onEventMarkets) {
+      onEventMarkets(eventData?.markets.map((m) => m.tokenId) ?? []);
     }
   };
 

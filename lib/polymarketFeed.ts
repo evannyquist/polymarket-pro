@@ -39,7 +39,11 @@ function calculateCurrentPrice(market: Market | null): number {
   return 0.5; // Default
 }
 
-export function usePolymarketFeed(marketId: string | null, marketData?: Market | null) {
+export function usePolymarketFeed(
+  marketId: string | null,
+  marketData?: Market | null,
+  extraMarketTokenIds: string[] = [],
+) {
   const [history, setHistory] = useState<Point[]>([]);
   const [latest, setLatest] = useState<Point | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +54,8 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resolvedTokenIdRef = useRef<string | null>(null);
   const isIntentionallyClosingRef = useRef(false);
+  const subscribedTokenIdsRef = useRef<string[]>([]);
+  const latestByTokenRef = useRef<Map<string, Point>>(new Map());
 
   // Fetch initial market data and history
   useEffect(() => {
@@ -68,9 +74,25 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
     const resolvedTokenId = marketData?.tokenId || marketId;
     resolvedTokenIdRef.current = resolvedTokenId;
     
+    const uniqueTokenIds = Array.from(
+      new Set(
+        [
+          resolvedTokenId,
+          ...extraMarketTokenIds,
+        ].filter((tokenId): tokenId is string => !!tokenId && tokenId.trim() !== ""),
+      ),
+    );
+    subscribedTokenIdsRef.current = uniqueTokenIds;
+    
     if (!resolvedTokenId) {
       setLoading(false);
       return;
+    }
+
+    // Set latest immediately if we already have cached live data for this token
+    const cachedLatest = latestByTokenRef.current.get(resolvedTokenId);
+    if (cachedLatest) {
+      setLatest(cachedLatest);
     }
 
     setLoading(true);
@@ -158,6 +180,7 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
         };
         
         setLatest(currentPoint);
+        latestByTokenRef.current.set(resolvedTokenId, currentPoint);
         
         // If we have current market price and no history, add it to history
         if (historyPoints.length === 0 && marketData) {
@@ -175,14 +198,31 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
 
     fetchMarketData();
 
+    const appendPointToHistory = (point: Point) => {
+      setHistory((prev) => {
+        if (prev.length > 0 && point.t <= prev[prev.length - 1].t) {
+          return prev;
+        }
+        const newHistory = [...prev, point];
+        // Keep last 500 points
+        return newHistory.length > 500 ? newHistory.slice(-500) : newHistory;
+      });
+      setLatest(point);
+    };
+
+    const updateLatestForToken = (tokenId: string, point: Point) => {
+      latestByTokenRef.current.set(tokenId, point);
+      if (tokenId === resolvedTokenIdRef.current) {
+        appendPointToHistory(point);
+      }
+    };
+
     // Set up WebSocket connection for real-time market updates
     // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
     // This is a public channel, so authentication may not be required
     // Use the same resolved token ID to ensure consistency with price history fetch
-    if (resolvedTokenId) {
-      const tokenId = resolvedTokenId;
-      console.log("Setting up WebSocket connection for token:", tokenId);
-      
+    if (uniqueTokenIds.length > 0) {
+      console.log("Setting up WebSocket connection for tokens:", uniqueTokenIds);
       try {
         // Connect to Polymarket CLOB WebSocket Market Channel
         const ws = new WebSocket(`${POLYMARKET_WS_URL}`);
@@ -194,9 +234,9 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
           // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
           ws.send(JSON.stringify({
             type: "market",
-            assets_ids: [tokenId]
+            assets_ids: uniqueTokenIds
           }));
-          console.log("Subscribed to market channel for token:", tokenId);
+          console.log("Subscribed to market channel for tokens:", uniqueTokenIds);
         };
         
         ws.onmessage = (event) => {
@@ -209,65 +249,62 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
             
             if (data.event_type === "last_trade_price" && data.price !== undefined) {
               // last_trade_price message: emitted when a trade happens
-              const price = parseFloat(data.price);
-              const normalizedPrice = Math.max(0, Math.min(1, price));
-              // Timestamp is in milliseconds, convert to seconds
-              const timestamp = data.timestamp ? Math.floor(parseInt(data.timestamp) / 1000) : Math.floor(Date.now() / 1000);
-              
-              const point: Point = {
-                t: timestamp,
-                v: Math.round(normalizedPrice * 1000) / 1000
-              };
-              
-              setHistory((prev) => {
-                const newHistory = [...prev, point];
-                // Keep last 500 points
-                return newHistory.length > 500 ? newHistory.slice(-500) : newHistory;
-              });
-              setLatest(point);
-              console.log("Updated from last_trade_price:", point);
-            } else if (data.event_type === "price_change" && data.price_changes && Array.isArray(data.price_changes)) {
-              // price_change message: emitted when orders are placed/cancelled
-              // Contains best_bid and best_ask in each PriceChange object
-              // Use the first price_change that matches our asset_id
-              const priceChange = data.price_changes.find((pc: any) => pc.asset_id === tokenId);
-              
-              if (priceChange && priceChange.best_bid !== undefined && priceChange.best_ask !== undefined) {
-                const bid = parseFloat(priceChange.best_bid);
-                const ask = parseFloat(priceChange.best_ask);
-                const spread = Math.abs(ask - bid);
-                
-                // Calculate price: midpoint if spread <= 0.10, else use last trade price if available
-                let price: number;
-                if (spread <= 0.10) {
-                  price = (bid + ask) / 2;
-                } else {
-                  // For wider spreads, we'd ideally use lastTradePrice, but we don't have it here
-                  // So we'll use midpoint as fallback
-                  price = (bid + ask) / 2;
-                }
-                
+              const tokenId = data.asset_id;
+              if (tokenId && subscribedTokenIdsRef.current.includes(tokenId)) {
+                const price = parseFloat(data.price);
                 const normalizedPrice = Math.max(0, Math.min(1, price));
                 // Timestamp is in milliseconds, convert to seconds
-                const timestamp = data.timestamp ? Math.floor(parseInt(data.timestamp) / 1000) : Math.floor(Date.now() / 1000);
+                const timestamp = data.timestamp ? Math.floor(parseInt(data.timestamp, 10) / 1000) : Math.floor(Date.now() / 1000);
                 
                 const point: Point = {
                   t: timestamp,
                   v: Math.round(normalizedPrice * 1000) / 1000
                 };
                 
-                setHistory((prev) => {
-                  const newHistory = [...prev, point];
-                  // Keep last 500 points
-                  return newHistory.length > 500 ? newHistory.slice(-500) : newHistory;
-                });
-                setLatest(point);
-                console.log("Updated from price_change:", point, { bid, ask, spread });
+                updateLatestForToken(tokenId, point);
+                console.log("Updated from last_trade_price:", { tokenId, point });
               }
-            } else if (data.event_type === "book" && data.asset_id === tokenId) {
+            } else if (data.event_type === "price_change" && data.price_changes && Array.isArray(data.price_changes)) {
+              // price_change message: emitted when orders are placed/cancelled
+              // Contains best_bid and best_ask in each PriceChange object
+              for (const priceChange of data.price_changes) {
+                const tokenId = priceChange.asset_id;
+                if (!tokenId || !subscribedTokenIdsRef.current.includes(tokenId)) continue;
+                
+                if (priceChange.best_bid !== undefined && priceChange.best_ask !== undefined) {
+                  const bid = parseFloat(priceChange.best_bid);
+                  const ask = parseFloat(priceChange.best_ask);
+                  const spread = Math.abs(ask - bid);
+                  
+                  // Calculate price: midpoint if spread <= 0.10, else use last trade price if available
+                  let price: number;
+                  if (spread <= 0.10) {
+                    price = (bid + ask) / 2;
+                  } else if (priceChange.price !== undefined) {
+                    const lastTrade = parseFloat(priceChange.price);
+                    price = isNaN(lastTrade) ? (bid + ask) / 2 : lastTrade;
+                  } else {
+                    price = (bid + ask) / 2;
+                  }
+                  
+                  const normalizedPrice = Math.max(0, Math.min(1, price));
+                  // Timestamp is in milliseconds, convert to seconds
+                  const timestamp = data.timestamp ? Math.floor(parseInt(data.timestamp, 10) / 1000) : Math.floor(Date.now() / 1000);
+                  
+                  const point: Point = {
+                    t: timestamp,
+                    v: Math.round(normalizedPrice * 1000) / 1000
+                  };
+                  
+                  updateLatestForToken(tokenId, point);
+                  console.log("Updated from price_change:", { tokenId, point, bid, ask, spread });
+                }
+              }
+            } else if (data.event_type === "book" && data.asset_id) {
               // book message: emitted on first subscription and when trades affect the book
               // Extract best bid/ask from the book
-              if (data.bids && data.bids.length > 0 && data.asks && data.asks.length > 0) {
+              const tokenId = data.asset_id;
+              if (tokenId && subscribedTokenIdsRef.current.includes(tokenId) && data.bids && data.bids.length > 0 && data.asks && data.asks.length > 0) {
                 // bids are sorted descending (highest first), asks are sorted ascending (lowest first)
                 const bestBid = parseFloat(data.bids[0].price);
                 const bestAsk = parseFloat(data.asks[0].price);
@@ -286,7 +323,7 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
                 
                 // Only update if this is a new point (not just initial book snapshot)
                 // We'll use price_change and last_trade_price for updates
-                console.log("Received book snapshot:", { bestBid, bestAsk, spread, price: point.v });
+                console.log("Received book snapshot:", { tokenId, bestBid, bestAsk, spread, price: point.v });
               }
             }
           } catch (err) {
@@ -306,7 +343,7 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
           
           // Only reconnect if this wasn't an intentional close and we still have a market selected
           // Use resolvedTokenIdRef to check if we still have a valid token ID
-          if (!isIntentionallyClosingRef.current && resolvedTokenIdRef.current) {
+          if (!isIntentionallyClosingRef.current && subscribedTokenIdsRef.current.length > 0) {
             console.log("WebSocket closed unexpectedly, scheduling reconnection...");
             reconnectTimeoutRef.current = setTimeout(() => {
               console.log("Attempting to reconnect WebSocket...");
@@ -360,6 +397,7 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
               return prev;
             });
             setLatest(point);
+            latestByTokenRef.current.set(tokenIdToUse, point);
           }
         } catch (err) {
           console.error("Error polling price history:", err);
@@ -390,7 +428,7 @@ export function usePolymarketFeed(marketId: string | null, marketData?: Market |
       // Note: isIntentionallyClosingRef.current is reset to false at the start of the next effect run (line 57)
       // We don't reset it here to avoid race conditions where onclose fires after cleanup
     };
-  }, [marketId, marketData?.tokenId, reconnectTrigger]);
+  }, [marketId, marketData?.tokenId, extraMarketTokenIds.join("|"), reconnectTrigger]);
 
   return { history, latest, loading, error };
 }
