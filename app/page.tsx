@@ -7,6 +7,8 @@ import AlertModal from "@/components/alerts/AlertModal";
 import AlertsList from "@/components/alerts/AlertsList";
 import MarketSelector from "@/components/market/MarketSelector";
 import AppToaster from "@/components/ui/Toaster";
+import { usePolymarketBTCPrice } from "@/lib/usePolymarketBTCPrice";
+import { useModelPrediction } from "@/lib/useModelPrediction";
 
 // SSR-safe dynamic import
 const MarketChart = dynamic(() => import("@/components/chart/MockChart"), { ssr: false });
@@ -16,6 +18,34 @@ export default function Home() {
   const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
   const [selectedMarketData, setSelectedMarketData] = useState<any>(null);
   const [eventMarketTokenIds, setEventMarketTokenIds] = useState<string[]>([]);
+  const [latestMarketValue, setLatestMarketValue] = useState<{ t: number; v: number } | null>(null);
+  
+  // Get current Bitcoin price from Polymarket RTDS when we have a Bitcoin market
+  const hasBitcoinMarket = !!selectedMarketData?.bitcoinPriceData;
+  const currentBitcoinPrice = usePolymarketBTCPrice(hasBitcoinMarket);
+  
+  // Calculate actual chance of up
+  const actualChanceOfUp = latestMarketValue ? Math.ceil(latestMarketValue.v * 100) : null;
+  
+  // Get model prediction
+  const predictedChanceOfUp = useModelPrediction(actualChanceOfUp);
+  
+  // Calculate trading signal
+  const getSignal = () => {
+    if (actualChanceOfUp === null || predictedChanceOfUp === null) return null;
+    
+    const diff = Math.abs(actualChanceOfUp - predictedChanceOfUp);
+    
+    if (diff <= 1) {
+      return { type: "NO OPP", color: "text-gray-400" };
+    } else if (actualChanceOfUp < predictedChanceOfUp) {
+      return { type: "BUY", color: "text-green-500" };
+    } else {
+      return { type: "SELL", color: "text-red-500" };
+    }
+  };
+  
+  const signal = getSignal();
 
   return (
     <AlertsProvider>
@@ -64,9 +94,54 @@ export default function Home() {
           <section className="mb-8">
             <div className="bg-[#0f1117] border border-gray-800/50 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
               <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-white mb-1">Price Chart</h2>
-                  <p className="text-sm text-gray-400">Real-time odds visualization</p>
+                <div className="flex items-end gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-white mb-1">Price Chart</h2>
+                    <p className="text-sm text-gray-400">Real-time odds visualization</p>
+                  </div>
+                  {selectedMarketData?.bitcoinPriceData && (
+                    <>
+                      <div className="flex flex-col items-start">
+                        <span className="text-xs text-gray-400 mb-0.5">price to beat</span>
+                        <span className="text-xl font-bold text-gray-400 leading-none">
+                          ${selectedMarketData.bitcoinPriceData.targetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      {currentBitcoinPrice !== null && (
+                        <div className="flex flex-col items-start">
+                          <span className="text-xs text-gray-400 mb-0.5">current price</span>
+                          <span className="text-xl font-bold tabular-nums leading-none" style={{ color: '#f7931a' }}>
+                            ${currentBitcoinPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {latestMarketValue && (
+                    <>
+                      <div className="flex flex-col items-start">
+                        <span className="text-xs text-gray-400 mb-0.5">chance of up</span>
+                        <span className="text-xl font-bold text-green-500 leading-none">
+                          {Math.ceil(latestMarketValue.v * 100)}%
+                        </span>
+                      </div>
+                      {predictedChanceOfUp !== null && (
+                        <div className="flex flex-col items-start">
+                          <span className="text-xs text-gray-400 mb-0.5">our model's predicted chance of up</span>
+                          <div className="flex items-baseline gap-2 leading-none">
+                            <span className="text-xl font-bold text-blue-400">
+                              {Math.round(predictedChanceOfUp)}%
+                            </span>
+                            {signal && (
+                              <span className={`text-sm font-semibold ${signal.color}`}>
+                                {signal.type}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <MarketSelector 
@@ -81,6 +156,9 @@ export default function Home() {
                 marketId={selectedMarketId} 
                 marketData={selectedMarketData}
                 extraMarketTokenIds={eventMarketTokenIds}
+                onLatestChange={setLatestMarketValue}
+                predictedChance={predictedChanceOfUp}
+                signal={signal}
               />
             </div>
           </section>

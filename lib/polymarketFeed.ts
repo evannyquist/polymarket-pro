@@ -109,8 +109,8 @@ export function usePolymarketFeed(
         // Fetch price history from CLOB API
         // Reference: https://docs.polymarket.com/api-reference/pricing/get-price-history-for-a-traded-token
         // Format: GET /prices-history?market=clobtokenid&interval=1d
-        console.log("Fetching price history with token ID:", tokenId);
-        console.log("Token ID type:", typeof tokenId, "Length:", tokenId?.length);
+        // TEMPORARILY DISABLED: console.log("Fetching price history with token ID:", tokenId);
+        // TEMPORARILY DISABLED: console.log("Token ID type:", typeof tokenId, "Length:", tokenId?.length);
         
         if (!tokenId || tokenId.trim() === "") {
           throw new Error("Token ID is empty or invalid");
@@ -123,7 +123,7 @@ export function usePolymarketFeed(
           },
         });
 
-        console.log("Price history API Response status:", historyResponse.status);
+        // TEMPORARILY DISABLED: console.log("Price history API Response status:", historyResponse.status);
         
         if (!historyResponse.ok) {
           const errorData = await historyResponse.json().catch(() => ({ error: historyResponse.statusText }));
@@ -131,7 +131,7 @@ export function usePolymarketFeed(
         }
         
         const historyData = await historyResponse.json();
-        console.log("Price history data:", historyData);
+        // TEMPORARILY DISABLED: console.log("Price history data:", historyData);
         
         // Convert price history format from { t: timestamp, p: price } to { t: timestamp, v: value }
         // The API returns prices, but we need to normalize them to 0-1 range for odds
@@ -152,7 +152,7 @@ export function usePolymarketFeed(
         // Sort by timestamp to ensure chronological order
         historyPoints.sort((a, b) => a.t - b.t);
         
-        console.log(`Loaded ${historyPoints.length} historical price points`);
+        // TEMPORARILY DISABLED: console.log(`Loaded ${historyPoints.length} historical price points`);
         
         // Set the history
         setHistory(historyPoints);
@@ -162,11 +162,11 @@ export function usePolymarketFeed(
         let currentPrice = 0.5;
         if (marketData) {
           currentPrice = calculateCurrentPrice(marketData);
-          console.log("Using current market price:", currentPrice, "from market data:", {
-            bestBid: marketData.bestBid,
-            bestAsk: marketData.bestAsk,
-            lastTradePrice: marketData.lastTradePrice
-          });
+          // TEMPORARILY DISABLED: console.log("Using current market price:", currentPrice, "from market data:", {
+          //   bestBid: marketData.bestBid,
+          //   bestAsk: marketData.bestAsk,
+          //   lastTradePrice: marketData.lastTradePrice
+          // });
         } else if (historyPoints.length > 0) {
           // Fallback to most recent historical point
           const latestPoint = historyPoints[historyPoints.length - 1];
@@ -222,13 +222,13 @@ export function usePolymarketFeed(
     // This is a public channel, so authentication may not be required
     // Use the same resolved token ID to ensure consistency with price history fetch
     if (uniqueTokenIds.length > 0) {
-      console.log("Setting up WebSocket connection for tokens:", uniqueTokenIds);
+      // TEMPORARILY DISABLED: console.log("Setting up WebSocket connection for tokens:", uniqueTokenIds);
       try {
         // Connect to Polymarket CLOB WebSocket Market Channel
         const ws = new WebSocket(`${POLYMARKET_WS_URL}`);
         
         ws.onopen = () => {
-          console.log("WebSocket connected to Market Channel");
+          // TEMPORARILY DISABLED: console.log("WebSocket connected to Market Channel");
           // Subscribe to market channel with asset_id (token ID)
           // Format: { type: "market", assets_ids: [tokenId] }
           // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
@@ -236,13 +236,13 @@ export function usePolymarketFeed(
             type: "market",
             assets_ids: uniqueTokenIds
           }));
-          console.log("Subscribed to market channel for tokens:", uniqueTokenIds);
+          // TEMPORARILY DISABLED: console.log("Subscribed to market channel for tokens:", uniqueTokenIds);
         };
         
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log("WebSocket message:", data);
+            // TEMPORARILY DISABLED: console.log("WebSocket message:", data);
             
             // Handle different event types per documentation
             // Reference: https://docs.polymarket.com/developers/CLOB/websocket/market-channel
@@ -262,7 +262,7 @@ export function usePolymarketFeed(
                 };
                 
                 updateLatestForToken(tokenId, point);
-                console.log("Updated from last_trade_price:", { tokenId, point });
+                // TEMPORARILY DISABLED: console.log("Updated from last_trade_price:", { tokenId, point });
               }
             } else if (data.event_type === "price_change" && data.price_changes && Array.isArray(data.price_changes)) {
               // price_change message: emitted when orders are placed/cancelled
@@ -297,7 +297,7 @@ export function usePolymarketFeed(
                   };
                   
                   updateLatestForToken(tokenId, point);
-                  console.log("Updated from price_change:", { tokenId, point, bid, ask, spread });
+                  // TEMPORARILY DISABLED: console.log("Updated from price_change:", { tokenId, point, bid, ask, spread });
                 }
               }
             } else if (data.event_type === "book" && data.asset_id) {
@@ -323,30 +323,30 @@ export function usePolymarketFeed(
                 
                 // Only update if this is a new point (not just initial book snapshot)
                 // We'll use price_change and last_trade_price for updates
-                console.log("Received book snapshot:", { tokenId, bestBid, bestAsk, spread, price: point.v });
+                // TEMPORARILY DISABLED: console.log("Received book snapshot:", { tokenId, bestBid, bestAsk, spread, price: point.v });
               }
             }
           } catch (err) {
-            console.error("Error parsing WebSocket message:", err, event.data);
+            // TEMPORARILY DISABLED: console.error("Error parsing WebSocket message:", err, event.data);
           }
         };
         
         ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          console.error("WebSocket readyState:", ws.readyState);
-          console.error("WebSocket URL:", POLYMARKET_WS_URL);
+          // TEMPORARILY DISABLED: console.error("WebSocket error:", error);
+          // TEMPORARILY DISABLED: console.error("WebSocket readyState:", ws.readyState);
+          // TEMPORARILY DISABLED: console.error("WebSocket URL:", POLYMARKET_WS_URL);
         };
         
         ws.onclose = (event) => {
-          console.log("WebSocket closed:", event.code, event.reason);
+          // TEMPORARILY DISABLED: console.log("WebSocket closed:", event.code, event.reason);
           wsRef.current = null;
           
           // Only reconnect if this wasn't an intentional close and we still have a market selected
           // Use resolvedTokenIdRef to check if we still have a valid token ID
           if (!isIntentionallyClosingRef.current && subscribedTokenIdsRef.current.length > 0) {
-            console.log("WebSocket closed unexpectedly, scheduling reconnection...");
+            // TEMPORARILY DISABLED: console.log("WebSocket closed unexpectedly, scheduling reconnection...");
             reconnectTimeoutRef.current = setTimeout(() => {
-              console.log("Attempting to reconnect WebSocket...");
+              // TEMPORARILY DISABLED: console.log("Attempting to reconnect WebSocket...");
               // Trigger reconnection by incrementing reconnectTrigger, which will cause the effect to re-run
               setReconnectTrigger((prev) => prev + 1);
             }, 3000);

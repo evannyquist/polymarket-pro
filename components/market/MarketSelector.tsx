@@ -19,6 +19,34 @@ export default function MarketSelector({
   const [selectedEventMarketIndex, setSelectedEventMarketIndex] = useState<number | null>(null);
   const { fetchMarket, loading, error, market, eventData } = useMarketBySlug();
 
+  // Extract slug from Polymarket URL
+  const extractSlugFromUrl = (input: string): string => {
+    const trimmed = input.trim();
+    
+    // Check if it's a URL (contains http:// or https://)
+    if (trimmed.includes("http://") || trimmed.includes("https://")) {
+      try {
+        const url = new URL(trimmed);
+        const pathname = url.pathname;
+        
+        // Match pattern: /event/... or /events/... or /market/...
+        const match = pathname.match(/\/(?:event|events|market)\/([^/?]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      } catch (e) {
+        // If URL parsing fails, try regex directly
+        const match = trimmed.match(/\/(?:event|events|market)\/([^/?]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+    }
+    
+    // If not a URL or extraction failed, return the input as-is
+    return trimmed;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!slug.trim()) return;
@@ -26,7 +54,8 @@ export default function MarketSelector({
     // Reset selection when loading new slug
     setSelectedEventMarketIndex(null);
     
-    const cleanSlug = slug.trim();
+    // Extract slug from URL if needed
+    const cleanSlug = extractSlugFromUrl(slug.trim());
     const result = await fetchMarket(cleanSlug);
     
     // If it's an event, select the first market by default
@@ -36,7 +65,7 @@ export default function MarketSelector({
       onSelect(firstMarket.tokenId);
       
       // Create a Market object for the first market
-      const marketData: Market = {
+      const marketData: Market & { bitcoinPriceData?: any } = {
         id: firstMarket.conditionId || firstMarket.tokenId,
         tokenId: firstMarket.tokenId,
         question: firstMarket.question,
@@ -45,6 +74,7 @@ export default function MarketSelector({
         bestBid: firstMarket.bestBid,
         bestAsk: firstMarket.bestAsk,
         lastTradePrice: firstMarket.lastTradePrice,
+        bitcoinPriceData: firstMarket.bitcoinPriceData,
       };
       
       if (onMarketData) {
@@ -77,7 +107,7 @@ export default function MarketSelector({
     onSelect(eventMarket.tokenId);
     
     // Create a Market object for the selected market
-    const marketData: Market = {
+    const marketData: Market & { bitcoinPriceData?: any } = {
       id: eventMarket.conditionId || eventMarket.tokenId,
       tokenId: eventMarket.tokenId,
       question: eventMarket.question,
@@ -86,6 +116,7 @@ export default function MarketSelector({
       bestBid: eventMarket.bestBid,
       bestAsk: eventMarket.bestAsk,
       lastTradePrice: eventMarket.lastTradePrice,
+      bitcoinPriceData: eventMarket.bitcoinPriceData,
     };
     
     if (onMarketData) {
@@ -103,7 +134,7 @@ export default function MarketSelector({
           type="text"
           value={slug}
           onChange={(e) => setSlug(e.target.value)}
-          placeholder="Enter market slug (e.g., fed-decision-in-october)"
+          placeholder="Enter market slug or URL (e.g., bitcoin-up-or-down-november-12-10pm-et)"
           className="flex-1 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
         />
         <button
@@ -163,7 +194,7 @@ export default function MarketSelector({
       )}
       
       <p className="text-xs text-gray-500 mt-1">
-        Tip: Find the slug from the Polymarket URL after <code className="text-gray-400">/event/</code> or <code className="text-gray-400">/market/</code>
+        Tip: You can paste the full Polymarket URL or just the slug (e.g., <code className="text-gray-400">bitcoin-up-or-down-november-12-10pm-et</code>)
       </p>
     </div>
   );
