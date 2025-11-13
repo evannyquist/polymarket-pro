@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Market } from "./markets";
+import { fetchBitcoinPriceData, type BitcoinPriceData } from "./binanceData";
 
 // Polymarket Gamma API endpoint
 const POLYMARKET_GAMMA_API = "https://gamma-api.polymarket.com";
@@ -15,6 +16,8 @@ export type EventMarket = {
   bestBid?: number;
   bestAsk?: number;
   lastTradePrice?: number;
+  eventStartTime?: string; // ISO timestamp for when the candle starts
+  bitcoinPriceData?: BitcoinPriceData; // Current BTC price and target price
 };
 
 export type EventData = {
@@ -51,21 +54,17 @@ export function useMarketBySlug() {
       }
 
       const eventData = await eventResponse.json();
-      console.log("Market/Event data from slug:", JSON.stringify(eventData, null, 2));
-      console.log("Response type check:", {
-        hasMarkets: !!eventData.markets,
-        marketsIsArray: Array.isArray(eventData.markets),
-        marketsLength: eventData.markets ? (Array.isArray(eventData.markets) ? eventData.markets.length : 'not array') : 0,
-        hasClobTokenIds: !!eventData.clobTokenIds,
-        hasConditionId: !!(eventData.conditionId || eventData.condition_id)
-      });
+      
+      // Check if this is a bitcoin up/down market
+      const marketQuestion = eventData.question || eventData.title || '';
+      const isBitcoinMarket = marketQuestion.toLowerCase().includes('bitcoin') && 
+                              (marketQuestion.toLowerCase().includes('up') || marketQuestion.toLowerCase().includes('down'));
 
       // Check if response is an event with markets array
       // Per documentation: https://docs.polymarket.com/api-reference/events/get-event-by-slug
       // Events endpoint returns an object with a markets array
       if (eventData.markets && Array.isArray(eventData.markets) && eventData.markets.length > 0) {
         // This is an EVENT - extract all markets
-        console.log("Found event with", eventData.markets.length, "markets");
         
         const eventMarkets: EventMarket[] = [];
         
@@ -104,6 +103,8 @@ export function useMarketBySlug() {
               return isNaN(parsed) ? undefined : parsed;
             };
             
+            const eventStartTime = marketItem.eventStartTime || eventData.startDate;
+            
             eventMarkets.push({
               question,
               tokenId,
@@ -112,12 +113,36 @@ export function useMarketBySlug() {
               bestBid: parsePrice(marketItem.bestBid),
               bestAsk: parsePrice(marketItem.bestAsk),
               lastTradePrice: parsePrice(marketItem.lastTradePrice),
+              eventStartTime,
             });
           }
         }
         
         if (eventMarkets.length === 0) {
           throw new Error("Event has no valid markets with clobTokenIds");
+        }
+        
+        // Check if this is a bitcoin up/down market and fetch Bitcoin price data
+        const isBitcoinUpDownMarket = marketQuestion.toLowerCase().includes('bitcoin') && 
+                                      (marketQuestion.toLowerCase().includes('up') || marketQuestion.toLowerCase().includes('down'));
+        
+        if (isBitcoinUpDownMarket && eventMarkets.length > 0) {
+          const firstMarket = eventMarkets[0];
+          const eventStartTime = firstMarket.eventStartTime;
+          
+          if (eventStartTime) {
+            try {
+              const bitcoinPriceData = await fetchBitcoinPriceData(eventStartTime);
+              
+              // Add Bitcoin price data to all markets in the event
+              eventMarkets.forEach(market => {
+                market.bitcoinPriceData = bitcoinPriceData;
+              });
+            } catch (error) {
+              console.error("Failed to fetch Bitcoin price data:", error);
+              // Continue without Bitcoin data - don't fail the entire market load
+            }
+          }
         }
         
         const event: EventData = {
@@ -159,7 +184,6 @@ export function useMarketBySlug() {
         conditionId = eventData.conditionId || eventData.condition_id || "";
         question = eventData.question || eventData.title || "Unknown Market";
         marketSlug = eventData.slug || slug;
-        console.log("Found market directly:", { clobTokenIds: clobTokenIdsRaw, conditionId, question });
       } 
       // Check if response is an array (markets endpoint can return array)
       else if (Array.isArray(eventData) && eventData.length > 0) {
@@ -168,7 +192,6 @@ export function useMarketBySlug() {
         conditionId = firstItem.conditionId || firstItem.condition_id || "";
         question = firstItem.question || firstItem.title || "Unknown Market";
         marketSlug = firstItem.slug || slug;
-        console.log("Found market in array:", { clobTokenIds: clobTokenIdsRaw, conditionId, question });
       } 
       else {
         console.error("Unexpected response structure:", eventData);
@@ -204,15 +227,6 @@ export function useMarketBySlug() {
 
       // Use the first token ID (usually YES outcome for binary markets)
       const tokenId = clobTokenIds[0];
-      console.log("Extracted token ID from clobTokenIds:", tokenId);
-      console.log("Token ID details:", {
-        value: tokenId,
-        type: typeof tokenId,
-        length: tokenId?.length,
-        isNumber: !isNaN(Number(tokenId)),
-        raw: JSON.stringify(tokenId)
-      });
-      console.log("Available token IDs:", clobTokenIds);
       
       // Validate token ID format
       if (!tokenId || typeof tokenId !== "string" || tokenId.trim() === "") {
@@ -255,8 +269,6 @@ export function useMarketBySlug() {
           lastTradePrice = isNaN(parsed) ? undefined : parsed;
         }
       }
-      
-      console.log("Current market prices:", { bestBid, bestAsk, lastTradePrice });
 
       const marketData: Market = {
         id: conditionId || tokenId, // Use conditionId if available, otherwise use tokenId
