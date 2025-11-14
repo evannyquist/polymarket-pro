@@ -9,9 +9,11 @@ import MarketSelector from "@/components/market/MarketSelector";
 import AppToaster from "@/components/ui/Toaster";
 import { usePolymarketBTCPrice } from "@/lib/usePolymarketBTCPrice";
 import { useModelPrediction } from "@/lib/useModelPrediction";
+import CountdownTimer from "@/components/chart/CountdownTimer";
 
 // SSR-safe dynamic import
 const MarketChart = dynamic(() => import("@/components/chart/MockChart"), { ssr: false });
+const BitcoinPriceChart = dynamic(() => import("@/components/chart/BitcoinPriceChart"), { ssr: false });
 
 export default function Home() {
   const [open, setOpen] = useState(false);
@@ -93,20 +95,34 @@ export default function Home() {
           {/* Chart Section */}
           <section className="mb-8">
             <div className="bg-[#0f1117] border border-gray-800/50 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-end gap-4">
+              <div className="mb-4 flex items-start justify-between">
+                <div className="flex flex-col gap-4">
                   <div>
                     <h2 className="text-xl font-semibold text-white mb-1">Price Chart</h2>
                     <p className="text-sm text-gray-400">Real-time odds visualization</p>
                   </div>
-                  {selectedMarketData?.bitcoinPriceData && (
-                    <>
-                      <div className="flex flex-col items-start">
-                        <span className="text-xs text-gray-400 mb-0.5">price to beat</span>
-                        <span className="text-xl font-bold text-gray-400 leading-none">
-                          ${selectedMarketData.bitcoinPriceData.targetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                  <div className="flex gap-4 items-start">
+                    {/* Left column: price to beat and chance of up */}
+                    <div className="flex flex-col gap-3">
+                      {selectedMarketData?.bitcoinPriceData && (
+                        <div className="flex flex-col items-start">
+                          <span className="text-xs text-gray-400 mb-0.5">price to beat</span>
+                          <span className="text-xl font-bold text-gray-400 leading-none">
+                            ${selectedMarketData.bitcoinPriceData.targetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+                      {latestMarketValue && (
+                        <div className="flex flex-col items-start">
+                          <span className="text-xs text-gray-400 mb-0.5">chance of up</span>
+                          <span className="text-xl font-bold text-green-500 leading-none">
+                            {Math.ceil(latestMarketValue.v * 100)}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Right column: current price and our prediction */}
+                    <div className="flex flex-col gap-3 relative">
                       {currentBitcoinPrice !== null && (
                         <div className="flex flex-col items-start">
                           <span className="text-xs text-gray-400 mb-0.5">current price</span>
@@ -115,19 +131,9 @@ export default function Home() {
                           </span>
                         </div>
                       )}
-                    </>
-                  )}
-                  {latestMarketValue && (
-                    <>
-                      <div className="flex flex-col items-start">
-                        <span className="text-xs text-gray-400 mb-0.5">chance of up</span>
-                        <span className="text-xl font-bold text-green-500 leading-none">
-                          {Math.ceil(latestMarketValue.v * 100)}%
-                        </span>
-                      </div>
                       {predictedChanceOfUp !== null && (
                         <div className="flex flex-col items-start">
-                          <span className="text-xs text-gray-400 mb-0.5">our model's predicted chance of up</span>
+                          <span className="text-xs text-gray-400 mb-0.5">our prediction</span>
                           <div className="flex items-baseline gap-2 leading-none">
                             <span className="text-xl font-bold text-blue-400">
                               {Math.round(predictedChanceOfUp)}%
@@ -140,8 +146,14 @@ export default function Home() {
                           </div>
                         </div>
                       )}
-                    </>
-                  )}
+                      {/* Timer positioned to the right, vertically centered between current price and our prediction */}
+                      {selectedMarketData?.question && (
+                        <div className="absolute left-full ml-8 top-1/2 -translate-y-1/2">
+                          <CountdownTimer marketQuestion={selectedMarketData?.question} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <MarketSelector 
@@ -152,14 +164,26 @@ export default function Home() {
                   />
                 </div>
               </div>
-              <MarketChart 
-                marketId={selectedMarketId} 
-                marketData={selectedMarketData}
-                extraMarketTokenIds={eventMarketTokenIds}
-                onLatestChange={setLatestMarketValue}
-                predictedChance={predictedChanceOfUp}
-                signal={signal}
-              />
+              <div className="flex gap-4">
+                {/* Bitcoin Price Chart */}
+                <div className="flex-1">
+                  <BitcoinPriceChart 
+                    targetPrice={selectedMarketData?.bitcoinPriceData?.targetPrice}
+                    enabled={hasBitcoinMarket}
+                  />
+                </div>
+                {/* Market Odds Chart */}
+                <div className="flex-1">
+                  <MarketChart 
+                    marketId={selectedMarketId} 
+                    marketData={selectedMarketData}
+                    extraMarketTokenIds={eventMarketTokenIds}
+                    onLatestChange={setLatestMarketValue}
+                    predictedChance={predictedChanceOfUp}
+                    signal={signal}
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
