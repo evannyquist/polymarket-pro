@@ -56,9 +56,26 @@ export function usePolymarketFeed(
   const isIntentionallyClosingRef = useRef(false);
   const subscribedTokenIdsRef = useRef<string[]>([]);
   const latestByTokenRef = useRef<Map<string, Point>>(new Map());
+  const prevTokenIdRef = useRef<string | null>(null);
+  const prevMarketIdRef = useRef<string | null>(null);
 
   // Fetch initial market data and history
   useEffect(() => {
+    // Resolve token ID consistently: prefer marketData.tokenId (more reliable) over marketId
+    const resolvedTokenId = marketData?.tokenId || marketId;
+    
+    // Only run effect if tokenId or marketId actually changed
+    if (
+      resolvedTokenId === prevTokenIdRef.current &&
+      marketId === prevMarketIdRef.current &&
+      reconnectTrigger === 0
+    ) {
+      return;
+    }
+    
+    prevTokenIdRef.current = resolvedTokenId;
+    prevMarketIdRef.current = marketId;
+    
     // Reset intentional close flag for new connections
     isIntentionallyClosingRef.current = false;
     
@@ -68,10 +85,6 @@ export function usePolymarketFeed(
       reconnectTimeoutRef.current = null;
     }
     
-    // Resolve token ID consistently: prefer marketData.tokenId (more reliable) over marketId
-    // This ensures both price history and WebSocket use the same token ID, preventing
-    // race conditions when state updates are out of sync
-    const resolvedTokenId = marketData?.tokenId || marketId;
     resolvedTokenIdRef.current = resolvedTokenId;
     
     const uniqueTokenIds = Array.from(

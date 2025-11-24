@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMarketBySlug, type EventMarket } from "@/lib/marketBySlug";
 import type { Market } from "@/lib/markets";
 
@@ -18,6 +18,73 @@ export default function MarketSelector({
   const [slug, setSlug] = useState("");
   const [selectedEventMarketIndex, setSelectedEventMarketIndex] = useState<number | null>(null);
   const { fetchMarket, loading, error, market, eventData } = useMarketBySlug();
+
+  // Debug: Log slug changes
+  useEffect(() => {
+    console.log("Slug state changed to:", slug);
+  }, [slug]);
+
+  // Listen for auto-load event
+  useEffect(() => {
+    const handleAutoLoad = async (event: any) => {
+      const slugToLoad = event.detail?.slug;
+      if (slugToLoad) {
+        console.log("Auto-loading market:", slugToLoad);
+        
+        // Set the slug in the input field
+        setSlug(slugToLoad);
+        console.log("Slug state set to:", slugToLoad);
+        
+        // Small delay to ensure state is set before fetching
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Directly fetch the market
+        try {
+          const result = await fetchMarket(slugToLoad);
+          
+          if (result.market) {
+            console.log("Auto-load: Setting market data (single market):", {
+              id: result.market.id,
+              question: result.market.question,
+              slug: result.market.slug,
+              hasBitcoinData: !!(result.market as any).bitcoinPriceData,
+              bitcoinData: (result.market as any).bitcoinPriceData,
+              fullMarket: result.market
+            });
+            onSelect(result.market.id);
+            onMarketData?.(result.market);
+          } else if (result.event && result.event.markets.length > 0) {
+            const firstMarket = result.event.markets[0];
+            console.log("Auto-load: Setting market data (event):", {
+              conditionId: firstMarket.conditionId,
+              tokenId: firstMarket.tokenId,
+              question: firstMarket.question,
+              hasBitcoinData: !!firstMarket.bitcoinPriceData,
+              bitcoinData: firstMarket.bitcoinPriceData
+            });
+            
+            onSelect(firstMarket.conditionId || firstMarket.tokenId);
+            onMarketData?.(firstMarket);
+            
+            const tokenIds = result.event.markets.map(m => m.tokenId).filter(Boolean);
+            console.log("Auto-load: Setting event token IDs:", tokenIds);
+            onEventMarkets?.(tokenIds);
+            
+            if (result.event.markets.length > 1) {
+              setSelectedEventMarketIndex(0);
+            }
+          }
+          
+          console.log("Auto-load complete for:", slugToLoad);
+        } catch (error) {
+          console.error("Failed to auto-load market:", error);
+        }
+      }
+    };
+
+    window.addEventListener('autoLoadMarket', handleAutoLoad);
+    return () => window.removeEventListener('autoLoadMarket', handleAutoLoad);
+  }, [fetchMarket, onSelect, onMarketData, onEventMarkets]);
 
   // Extract slug from Polymarket URL
   const extractSlugFromUrl = (input: string): string => {

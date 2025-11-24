@@ -1,0 +1,29 @@
+# Database (Vercel Postgres / Neon)
+DATABASE_URL=postgresql://neondb_owner:npg_9h1rVwgZzupQ@ep-square-wind-ahu4w8ux-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://neondb_owner:npg_9h1rVwgZzupQ@ep-square-wind-ahu4w8ux.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+# PostgreSQL Connection Parameters
+PGHOST=ep-square-wind-ahu4w8ux-pooler.c-3.us-east-1.aws.neon.tech
+PGHOST_UNPOOLED=ep-square-wind-ahu4w8ux.c-3.us-east-1.aws.neon.tech
+PGUSER=neondb_owner
+PGDATABASE=neondb
+PGPASSWORD=npg_9h1rVwgZzupQ
+
+# Vercel Postgres Template Variables (used by @vercel/postgres)
+POSTGRES_URL=postgresql://neondb_owner:npg_9h1rVwgZzupQ@ep-square-wind-ahu4w8ux-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+POSTGRES_URL_NON_POOLING=postgresql://neondb_owner:npg_9h1rVwgZzupQ@ep-square-wind-ahu4w8ux.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+POSTGRES_USER=neondb_owner
+POSTGRES_HOST=ep-square-wind-ahu4w8ux-pooler.c-3.us-east-1.aws.neon.tech
+POSTGRES_PASSWORD=npg_9h1rVwgZzupQ
+POSTGRES_DATABASE=neondb
+POSTGRES_URL_NO_SSL=postgresql://neondb_owner:npg_9h1rVwgZzupQ@ep-square-wind-ahu4w8ux-pooler.c-3.us-east-1.aws.neon.tech/neondb
+POSTGRES_PRISMA_URL=postgresql://neondb_owner:npg_9h1rVwgZzupQ@ep-square-wind-ahu4w8ux-pooler.c-3.us-east-1.aws.neon.tech/neondb?connect_timeout=15&sslmode=require
+
+# WalletConnect Project ID (optional, for WalletConnect support)
+# Get one at https://cloud.walletconnect.com/
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=""
+
+# Glassnode API Key (for DVOL volatility data)
+# Get from https://studio.glassnode.com/settings/api
+GLASSNODE_API_KEY=""
+

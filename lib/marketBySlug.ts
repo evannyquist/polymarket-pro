@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Market } from "./markets";
-import { fetchBitcoinPriceData, type BitcoinPriceData } from "./binanceData";
+import { fetchBitcoinPriceAtTimestamp, extractUnixTimestampFromSlug, type BitcoinPriceData } from "./binanceData";
 
 // Polymarket Gamma API endpoint
 const POLYMARKET_GAMMA_API = "https://gamma-api.polymarket.com";
@@ -127,12 +127,46 @@ export function useMarketBySlug() {
                                       (marketQuestion.toLowerCase().includes('up') || marketQuestion.toLowerCase().includes('down'));
         
         if (isBitcoinUpDownMarket && eventMarkets.length > 0) {
-          const firstMarket = eventMarkets[0];
-          const eventStartTime = firstMarket.eventStartTime;
+          // Extract Unix timestamp from the slug URL
+          const unixTimestamp = extractUnixTimestampFromSlug(slug);
           
-          if (eventStartTime) {
+          if (!unixTimestamp) {
+            console.warn("Could not extract Unix timestamp from slug:", slug);
+            console.warn("Full slug value:", slug);
+            console.warn("Event data slug:", eventData.slug);
+          } else {
             try {
-              const bitcoinPriceData = await fetchBitcoinPriceData(eventStartTime);
+              console.log("=== FETCHING BITCOIN TARGET PRICE ===");
+              console.log("Slug:", slug);
+              console.log("Unix timestamp (seconds):", unixTimestamp);
+              console.log("Date:", new Date(unixTimestamp * 1000).toISOString());
+              console.log("Date (readable):", new Date(unixTimestamp * 1000).toLocaleString('en-US', { 
+                timeZone: 'America/New_York',
+                dateStyle: 'full',
+                timeStyle: 'long'
+              }));
+              
+              // Detect interval from slug format
+              let interval = "15m"; // default
+              
+              if (slug.match(/\b(\d{10}|\d{13})\b/)) {
+                // 15m format: btc-updown-15m-{unix_timestamp}
+                interval = "15m";
+              } else if (slug.match(/bitcoin-up-or-down-\w+-\d+-\d+(am|pm)-et/)) {
+                // 1h format: bitcoin-up-or-down-november-13-9pm-et
+                interval = "1h";
+              } else if (slug.match(/bitcoin-up-or-down-on-\w+-\d+/)) {
+                // 1d format: bitcoin-up-or-down-on-november-14
+                interval = "1d";
+              }
+              
+              console.log("Detected interval from slug:", interval, "for slug:", slug);
+              
+              // Fetch Bitcoin price at the Unix timestamp with the correct interval
+              const bitcoinPriceData = await fetchBitcoinPriceAtTimestamp(unixTimestamp, interval);
+              
+              console.log("Fetched target price:", bitcoinPriceData.targetPrice);
+              console.log("=====================================");
               
               // Add Bitcoin price data to all markets in the event
               eventMarkets.forEach(market => {
@@ -156,7 +190,7 @@ export function useMarketBySlug() {
         setLoading(false);
         
         // Return first market for backward compatibility, but also return event
-        const firstMarketData: Market = {
+        const firstMarketData: Market & { bitcoinPriceData?: any } = {
           id: eventMarkets[0].conditionId || eventMarkets[0].tokenId,
           tokenId: eventMarkets[0].tokenId,
           question: eventMarkets[0].question,
@@ -165,7 +199,14 @@ export function useMarketBySlug() {
           bestBid: eventMarkets[0].bestBid,
           bestAsk: eventMarkets[0].bestAsk,
           lastTradePrice: eventMarkets[0].lastTradePrice,
+          bitcoinPriceData: eventMarkets[0].bitcoinPriceData, // Include Bitcoin data
         };
+        
+        console.log("Returning first market data with Bitcoin data:", {
+          question: firstMarketData.question,
+          hasBitcoinData: !!firstMarketData.bitcoinPriceData,
+          bitcoinData: firstMarketData.bitcoinPriceData
+        });
         
         return { market: firstMarketData, event };
       }
@@ -270,7 +311,17 @@ export function useMarketBySlug() {
         }
       }
 
-      const marketData: Market = {
+      // Check if this market has Bitcoin price data (from event markets array)
+      let bitcoinPriceData: any = undefined;
+      if (eventData.markets && Array.isArray(eventData.markets) && eventData.markets.length > 0) {
+        const firstMarket = eventData.markets[0];
+        if (firstMarket.bitcoinPriceData) {
+          bitcoinPriceData = firstMarket.bitcoinPriceData;
+          console.log("Found Bitcoin price data in market:", bitcoinPriceData);
+        }
+      }
+
+      const marketData: Market & { bitcoinPriceData?: any } = {
         id: conditionId || tokenId, // Use conditionId if available, otherwise use tokenId
         tokenId: tokenId,
         question: question,
@@ -279,7 +330,14 @@ export function useMarketBySlug() {
         bestBid,
         bestAsk,
         lastTradePrice,
+        bitcoinPriceData, // Add Bitcoin price data if available
       };
+
+      console.log("Returning market with Bitcoin data:", {
+        question: marketData.question,
+        hasBitcoinData: !!marketData.bitcoinPriceData,
+        bitcoinData: marketData.bitcoinPriceData
+      });
 
       setMarket(marketData);
       setEventData(null); // Clear event data

@@ -1,0 +1,14 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/collect-data",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/rtds/cleanup",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
+
+
