@@ -1,8 +1,8 @@
 "use client";
 
-import { createChart, type ISeriesApi, type LineData, type Time, type UTCTimestamp, LineSeries, type AutoscaleInfo } from "lightweight-charts";
+import { createChart, type ISeriesApi, type Time, type UTCTimestamp, LineSeries, type AutoscaleInfo } from "lightweight-charts";
 import { useEffect, useRef } from "react";
-import { usePolymarketBTCPrice } from "@/lib/usePolymarketBTCPrice";
+import { useChainlinkBTCPrice } from "@/lib/useChainlinkBTCPrice";
 
 interface BitcoinPriceChartProps {
   targetPrice?: number;
@@ -12,11 +12,11 @@ interface BitcoinPriceChartProps {
 export default function BitcoinPriceChart({ targetPrice, enabled = true }: BitcoinPriceChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const targetPriceLineRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const targetPriceLineRef = useRef<any>(null); // Stores the price line object, not a series
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const priceHistoryRef = useRef<Array<{ time: number; value: number }>>([]);
   const currentPriceRef = useRef<number | null>(null);
-  const currentPrice = usePolymarketBTCPrice(enabled);
+  const { currentPrice } = useChainlinkBTCPrice(enabled);
 
   // Initialize chart
   useEffect(() => {
@@ -41,7 +41,27 @@ export default function BitcoinPriceChart({ targetPrice, enabled = true }: Bitco
       timeScale: {
         borderColor: "#374151",
         timeVisible: true,
-        secondsVisible: true
+        secondsVisible: true,
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time * 1000); // Convert Unix timestamp to milliseconds
+          return date.toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+          });
+        }
+      },
+      localization: {
+        timeFormatter: (time: number) => {
+          const date = new Date(time * 1000); // Convert Unix timestamp to milliseconds
+          return date.toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+          });
+        }
       },
       crosshair: {
         mode: 0,
@@ -115,23 +135,16 @@ export default function BitcoinPriceChart({ targetPrice, enabled = true }: Bitco
 
     seriesRef.current = priceLine;
 
-    // Add target price line (dotted horizontal line)
-    if (targetPrice) {
-      const targetLine = chart.addSeries(LineSeries, {
+    // Add target price line as a horizontal price line with label
+    if (targetPrice && seriesRef.current) {
+      const targetLine = seriesRef.current.createPriceLine({
+        price: targetPrice,
+        color: "#9ca3af",
         lineWidth: 1,
-        color: "#9ca3af", // Grey
         lineStyle: 2, // dotted
-        priceLineVisible: false,
-        lastValueVisible: false,
-        priceFormat: {
-          type: "price",
-          precision: 2,
-          minMove: 0.01
-        }
+        axisLabelVisible: true,
+        title: "target",
       });
-
-      // Target line doesn't need autoscale - it will use the same scale as price line
-
       targetPriceLineRef.current = targetLine;
     }
 
@@ -157,9 +170,9 @@ export default function BitcoinPriceChart({ targetPrice, enabled = true }: Bitco
     const now = Math.floor(Date.now() / 1000);
     const oneMinuteAgo = now - 60;
 
-    // Add new price point
+    // Add new price point (store time as number in ref)
     const newPoint = {
-      time: now as UTCTimestamp as Time,
+      time: now,
       value: currentPrice
     };
 
@@ -170,11 +183,17 @@ export default function BitcoinPriceChart({ targetPrice, enabled = true }: Bitco
 
     // Update price series
     try {
+      // Convert to chart format (Time type)
+      const chartPoint = {
+        time: now as UTCTimestamp as Time,
+        value: currentPrice
+      };
+      
       // If this is the first point, set all data, otherwise just update
       if (priceHistoryRef.current.length === 1) {
-        seriesRef.current.setData([newPoint]);
+        seriesRef.current.setData([chartPoint]);
       } else {
-        seriesRef.current.update(newPoint);
+        seriesRef.current.update(chartPoint);
       }
       
       // Force autoscale recalculation by reapplying options
@@ -240,43 +259,18 @@ export default function BitcoinPriceChart({ targetPrice, enabled = true }: Bitco
     }
   }, [currentPrice, enabled, targetPrice]);
 
-  // Update target price line when target price changes or time progresses
+  // Update target price line when target price changes
   useEffect(() => {
-    if (!targetPriceLineRef.current || !targetPrice || !enabled || !chartRef.current) return;
-
-    const now = Math.floor(Date.now() / 1000);
-    const oneMinuteAgo = now - 60;
+    if (!targetPriceLineRef.current || !targetPrice || !enabled) return;
 
     try {
-      // Update target price line to span the visible time range
-      const dataPoints: LineData[] = [
-        { time: oneMinuteAgo as UTCTimestamp as Time, value: targetPrice },
-        { time: now as UTCTimestamp as Time, value: targetPrice }
-      ];
-      
-      targetPriceLineRef.current.setData(dataPoints);
+      // Update the price line's price value
+      targetPriceLineRef.current.applyOptions({
+        price: targetPrice,
+      });
     } catch (error) {
       console.error("Error updating target price line:", error);
     }
-
-    // Update every second to keep the line extending
-    const interval = setInterval(() => {
-      if (!targetPriceLineRef.current || !targetPrice) return;
-      const currentTime = Math.floor(Date.now() / 1000);
-      const currentOneMinuteAgo = currentTime - 60;
-      
-      try {
-        const dataPoints: LineData[] = [
-          { time: currentOneMinuteAgo as UTCTimestamp as Time, value: targetPrice },
-          { time: currentTime as UTCTimestamp as Time, value: targetPrice }
-        ];
-        targetPriceLineRef.current.setData(dataPoints);
-      } catch (error) {
-        // Ignore errors
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
   }, [targetPrice, enabled]);
 
   if (!enabled) {

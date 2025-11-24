@@ -3,7 +3,6 @@
 import { createChart, type ISeriesApi, type LineData, type Time, type UTCTimestamp, LineSeries, AreaSeries, type AutoscaleInfo, type AreaData } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 import { usePolymarketFeed } from "@/lib/polymarketFeed";
-import { useAlerts } from "@/components/alerts/AlertsContext";
 
 export default function MarketChart({ 
   marketId, 
@@ -26,9 +25,9 @@ export default function MarketChart({
   const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const lastChartTimeRef = useRef<number>(0);
+  const lastPredictedTimeRef = useRef<number>(0);
   const predictedDataRef = useRef<Map<number, number>>(new Map()); // Track predicted values by timestamp
   const { latest, history, loading, error } = usePolymarketFeed(marketId, marketData, extraMarketTokenIds);
-  const { evaluateAlerts } = useAlerts();
 
   // Notify parent of latest value changes
   useEffect(() => {
@@ -60,7 +59,25 @@ export default function MarketChart({
       timeScale: {
         borderColor: "#374151",
         timeVisible: true,
-        secondsVisible: false
+        secondsVisible: false,
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time * 1000); // Convert Unix timestamp to milliseconds
+          return date.toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+        }
+      },
+      localization: {
+        timeFormatter: (time: number) => {
+          const date = new Date(time * 1000); // Convert Unix timestamp to milliseconds
+          return date.toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+        }
       },
       crosshair: {
         mode: 0,
@@ -147,6 +164,15 @@ export default function MarketChart({
     areaSeriesRef.current = areaSeries;
     console.log("Chart and series initialized");
 
+    // Set the visible price range to 0-1
+    chart.priceScale('right').applyOptions({
+      scaleMargins: {
+        top: 0.1,
+        bottom: 0.1,
+      },
+      autoScale: true
+    });
+
     const onResize = () => chart.applyOptions({ width: containerRef.current!.clientWidth });
     window.addEventListener("resize", onResize);
 
@@ -171,6 +197,7 @@ export default function MarketChart({
       historyInitializedRef.current = false;
       lastHistoryLengthRef.current = 0;
       lastMarketIdRef.current = marketId;
+      lastPredictedTimeRef.current = 0; // Reset predicted time tracking
     }
   }, [marketId]);
 
@@ -346,7 +373,6 @@ export default function MarketChart({
     const lastHistoryPoint = history[history.length - 1];
     if (lastHistoryPoint && lastHistoryPoint.t === latest.t && lastHistoryPoint.v === latest.v) {
       // This point is already in the history, don't update again
-      evaluateAlerts(latest.v);
       return;
     }
     
@@ -357,7 +383,6 @@ export default function MarketChart({
     }
     
     if (newTime <= lastChartTimeRef.current) {
-      evaluateAlerts(latest.v);
       return;
     }
     
@@ -381,9 +406,7 @@ export default function MarketChart({
     } catch (error) {
       console.error("Error updating chart with latest point:", error);
     }
-    
-    evaluateAlerts(latest.v);
-  }, [latest, evaluateAlerts, history]);
+  }, [latest, history]);
 
   // Update area series color based on signal
   useEffect(() => {
@@ -417,6 +440,11 @@ export default function MarketChart({
     const newTime = typeof latest.t === "number" ? latest.t : Number(latest.t);
     if (!newTime || isNaN(newTime)) return;
 
+    // Only update if the new time is newer than or equal to the last predicted time
+    if (newTime < lastPredictedTimeRef.current) {
+      return;
+    }
+
     // Convert predicted chance from percentage (0-100) to decimal (0-1)
     const predictedValue = predictedChance / 100;
     const actualValue = latest.v;
@@ -430,6 +458,7 @@ export default function MarketChart({
         time: newTime as UTCTimestamp as Time,
         value: predictedValue
       });
+      lastPredictedTimeRef.current = newTime;
 
       // Update area series - area fills between actual and predicted
       // For area series, we'll use the higher value and set baseValue to the lower value
@@ -545,6 +574,9 @@ export default function MarketChart({
     try {
       if (deduplicatedPredicted.length > 0) {
         predictedSeriesRef.current.setData(deduplicatedPredicted);
+        // Update last predicted time ref
+        const lastPredictedPoint = deduplicatedPredicted[deduplicatedPredicted.length - 1];
+        lastPredictedTimeRef.current = lastPredictedPoint.time as number;
       }
       if (deduplicatedArea.length > 0) {
         areaSeriesRef.current.setData(deduplicatedArea as any);
